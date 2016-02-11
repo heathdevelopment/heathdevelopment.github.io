@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<!--This is an example app created using phonegap, css, javascript, and html, jquery ui
+	must allow access to your location for application to function correctly
+	simple tells you the nearest target market, store hours, and address-->
+<html>
+    
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no">
+        <title>Target Store Locator</title>
+        
+        <script src="http://code.jquery.com/jquery-1.9.1.min.js"></script>
+        <script src="http://code.jquery.com/mobile/1.3.1/jquery.mobile-1.3.1.min.js"></script>
+        <script src="js/apigee.js"></script>
+       
+        
+        <link rel="stylesheet" href="http://code.jquery.com/mobile/1.3.1/jquery.mobile-1.3.1.min.css" />       
+        <link rel="stylesheet" href="css/style.css">       
+       
+    </head>
+    
+    <body>
+        <!-- This is the main page for the app -->
+        <div data-role="page" id="results">
+            <div data-theme="c" data-role="header" style="padding-top: 20px">
+                <h3>
+                    Lets Go Shopping
+                </h3>
+            </div>
+            <div class = "break"></div>
+<!--handle slide shows-->
+  <div class = "row">
+    <div class ="infoSlideshow">
+      <div class ="overlay"></div>
+      <ul class = "cb-slideshow">
+      <li>
+        <span></span>
+        <div>                  
+        </div>
+      </li>
+      <li>
+        <span></span><!--spans are empty but will be filled with css-->
+        <div>                 
+        </div>
+      </li>
+      <li>
+        <span></span>
+        <div>         
+         </div>
+      </li>
+    </ul> <!--end of cb-slideshow-->
+  </div><!--end of  slideshow row-->
+</div><!--info slideshow end-->
+            
+            <div class = "break"></div>
+            <img id="map" src="https://maps.googleapis.com/maps/api/staticmap?scale=2&center=Ephrata, PA&amp;zoom=14&amp;size=400x200&amp;sensor=false">
+            <div class = "break"></div>
+            <div data-role="content">
+                <ul id="list" data-role="listview" data-divider-theme="c" data-inset="false" data-count-theme="b">
+                    <li data-role="list-divider" role="heading">Nearest Stores</li>
+                </ul> 
+            </div>    
+        </div>
+        <script>
+            //Initialize apigee with user name and password to access data
+            var apigee = new Apigee.Client({
+                orgName:'usergrid',
+                appName:'tests'
+            });
+            $(function()
+            {
+                if (navigator.userAgent.match(/(iPhone|iPod|iPad|Android|BlackBerry)/)) {
+                    
+                    document.addEventListener("deviceready", onDeviceReady, false);
+                } else {
+                    onDeviceReady(); //checks to see if the browser is ready
+                }
+            })
+            function onDeviceReady()
+             {
+                navigator.geolocation.getCurrentPosition(onGetLocationSuccess, onGetLocationError);     
+            }
+            // updates the map, listing and store page
+            
+            function renderStore(store, label) {
+                var coords = store.get('location').latitude+","+store.get('location').longitude;
+                
+                // Update the map
+                var src =  $("#map").attr('src') + "&markers=color:blue%7Clabel:"+label+"%7C"+coords;
+                
+                // Add a list divider for the Pharmacy and SuperTarget 
+                $("#map").attr('src', src);
+                switch(label) {
+                    case 'S':
+                    $("#list").append('<li data-role="list-divider" role="heading">Nearest SuperTarget</li>');
+                    break;
+                    case 'P':
+                    $("#list").append('<li data-role="list-divider" role="heading">Nearest Pharmacy</li>');
+                    break;
+                }
+                $("#list").append('<li><a href="#page'+store.get('storeNumber')+'" data-role="button" data-transition="slide">'+store.get('name')+'</a><span class="ui-li-count ui-btn-corner-all">'+label+'</span></li>');
+                $("#list").listview('refresh');
+                $('body').append('<div data-role="page" id="page'+store.get('storeNumber')+'"><div data-theme="b" data-role="header" data-position="fixed"><h3>'+store.get('name')+'</h3><a data-role="button" data-rel="back" data-icon="arrow-l" data-iconpos="left"class="ui-btn-left">Results</a></div><img id="map" src="https://maps.googleapis.com/maps/api/staticmap?scale=2&center='+coords+'+&zoom=14&size='+window.innerWidth+'x200&markers='+coords+'&sensor=false" ><div data-role="content"><div><p><b>Address</b><br/>'+store.get('location').displayAddress+'</p><p><b>Opening Hours</b><br/>'+store.get('hours').join('<br/>')+'</p></div></div></div>');
+            }
+          
+            function onGetLocationSuccess(location)
+             {
+                //Get the coordinates 
+                var latlon = location.coords.latitude+","+location.coords.longitude;
+                // update the map
+                var home = "color:orange%7C"+latlon;
+                $("#map").attr('src', "https://maps.googleapis.com/maps/api/staticmap?scale=2&center="+latlon+"&zoom=10&size="+window.innerWidth+"x200&sensor=false&markers="+home);
+               
+                // This query will return all stores within 15,000 meters of the current location
+                var stores = new Apigee.Collection( { "client":apigee, "type":"stores", "qs":{"ql":"location within 15000 of "+latlon, "limit":5} } );
+                //Query and process results
+                stores.fetch( function(response) 
+                {
+                        
+                        // Process the regular store
+                        var count = 1;
+                        while(stores.hasNextEntity()) 
+                        {
+                            renderStore(stores.getNextEntity(), count);
+                            count++;
+                        }
+                        // Now let’s search for the nearest store with a Pharmacy
+                        var pharmacy = new Apigee.Collection( { "client":apigee, "type":"stores", "qs":{"ql":"location within 100000 of "+latlon+" and pharmacy = true", "limit":1}});
+                        pharmacy.fetch( function(response)
+                         {
+                            renderStore(pharmacy.getNextEntity(), 'P');
+                            var supertarget = new Apigee.Collection( { "client":apigee, "type":"stores", "qs":{"ql":"location within 100000 of "+latlon+" and supertarget = true", "limit":1}});
+                            supertarget.fetch( function(response)
+                             {
+                                renderStore(supertarget.getNextEntity(), 'S')
+                                });
+                            });
+                        });
+            }
+            function onGetLocationError() {
+                alert("Location not found, couldn't get your gps location");
+            }
+        </script>        
+    
+    </body>
+</html>
